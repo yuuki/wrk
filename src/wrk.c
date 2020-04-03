@@ -13,6 +13,7 @@ static struct config {
     bool     delay;
     bool     dynamic;
     bool     latency;
+    bool     no_keepalive;
     char    *host;
     char    *script;
     SSL_CTX *ctx;
@@ -52,6 +53,7 @@ static void usage() {
            "    -H, --header      <H>  Add header to request      \n"
            "        --latency          Print latency statistics   \n"
            "        --timeout     <T>  Socket/request timeout     \n"
+           "    -N,--no-keepalive      Don't keep connection alive\n"
            "    -v, --version          Print version details      \n"
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
@@ -348,7 +350,7 @@ static int response_complete(http_parser *parser) {
         aeCreateFileEvent(thread->loop, c->fd, AE_WRITABLE, socket_writeable, c);
     }
 
-    if (!http_should_keep_alive(parser)) {
+    if (cfg.no_keepalive || !http_should_keep_alive(parser)) {
         reconnect_socket(thread, c);
         goto done;
     }
@@ -473,6 +475,7 @@ static struct option longopts[] = {
     { "script",      required_argument, NULL, 's' },
     { "header",      required_argument, NULL, 'H' },
     { "latency",     no_argument,       NULL, 'L' },
+    { "no-keepalive",no_argument,       NULL, 'N' },
     { "timeout",     required_argument, NULL, 'T' },
     { "help",        no_argument,       NULL, 'h' },
     { "version",     no_argument,       NULL, 'v' },
@@ -489,7 +492,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     cfg->duration    = 10;
     cfg->timeout     = SOCKET_TIMEOUT_MS;
 
-    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:Lrv?", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:LNrv?", longopts, NULL)) != -1) {
         switch (c) {
             case 't':
                 if (scan_metric(optarg, &cfg->threads)) return -1;
@@ -508,6 +511,9 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
                 break;
             case 'L':
                 cfg->latency = true;
+                break;
+            case 'N':
+                cfg->no_keepalive = true;
                 break;
             case 'T':
                 if (scan_time(optarg, &cfg->timeout)) return -1;
